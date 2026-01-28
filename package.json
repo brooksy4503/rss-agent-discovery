@@ -1,6 +1,6 @@
 {
   "name": "rss-agent-discovery",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AI agent-focused RSS feed discovery. JSON output, semantic exit codes.",
   "main": "dist/find-rss-feeds.js",
   "type": "module",
