@@ -1,0 +1,46 @@
+{
+  "name": "rss-agent-discovery",
+  "version": "0.1.0",
+  "description": "AI agent-focused RSS feed discovery. JSON output, semantic exit codes.",
+  "main": "dist/find-rss-feeds.js",
+  "type": "module",
+  "bin": {
+    "rss-agent-discovery": "bin/rss-agent-discovery",
+    "rss-discover": "bin/rss-agent-discovery"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/find-rss-feeds.js",
+    "dev": "tsc && node dist/find-rss-feeds.js",
+    "test": "npm run test:unit && npm run test:smoke",
+    "test:unit": "npm run build && node --test dist/find-rss-feeds.test.js",
+    "test:smoke": "npm run build && node dist/find-rss-feeds.js https://vercel.com https://news.ycombinator.com | jq",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "rss",
+    "atom",
+    "feed",
+    "discovery",
+    "ai",
+    "agent",
+    "cli",
+    "json"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/cheerio": "^0.22.35",
+    "@types/node": "^25.0.10",
+    "typescript": "^5.9.3"
+  }
+}
