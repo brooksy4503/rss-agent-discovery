@@ -27,7 +27,7 @@ npm run build
 
 ### Basic usage:
 ```bash
-npm start https://vercel.com
+node dist/find-rss-feeds.js https://vercel.com
 ```
 
 Or via CLI (after `npm link`):
@@ -37,44 +37,49 @@ rss-discover https://vercel.com
 
 ### Multiple URLs (parallel processing):
 ```bash
-npm start https://vercel.com https://news.ycombinator.com https://stripe.com
+node dist/find-rss-feeds.js https://vercel.com https://news.ycombinator.com https://stripe.com
 ```
 
 ### Parse with jq:
 ```bash
-npm start https://vercel.com | jq '.results[0].feeds'
+node dist/find-rss-feeds.js https://vercel.com | jq '.results[0].feeds'
 ```
 
 ### Custom timeout:
 ```bash
-npm start -- --timeout 15000 https://example.com
+node dist/find-rss-feeds.js --timeout 15000 https://example.com
 ```
 
 ### Skip blog scanning:
 ```bash
-npm start -- --skip-blogs https://example.com
+node dist/find-rss-feeds.js --skip-blogs https://example.com
+```
+
+### Limit blog scans:
+```bash
+node dist/find-rss-feeds.js --max-blogs 3 https://example.com
 ```
 
 ### Custom blog paths:
 ```bash
-npm start -- --blog-paths '/blog,/news' https://example.com
+node dist/find-rss-feeds.js --blog-paths '/blog,/news' https://example.com
 # or with pipe separator
-npm start -- --blog-paths '/blog|/updates' https://example.com
+node dist/find-rss-feeds.js --blog-paths '/blog|/updates' https://example.com
 ```
 
 ### Verbose mode (debug logging):
 ```bash
-npm start -- --verbose https://example.com
+node dist/find-rss-feeds.js --verbose https://example.com
 ```
 
 ### Show help:
 ```bash
-npm start --help
+node dist/find-rss-feeds.js --help
 ```
 
 ### Show version:
 ```bash
-npm start -- --version
+node dist/find-rss-feeds.js --version
 # or
 rss-discover --version
 ```
@@ -138,7 +143,7 @@ npm run test:smoke    # Run smoke tests (integration)
 
 ### Find feeds for Vercel:
 ```bash
-npm start https://vercel.com
+node dist/find-rss-feeds.js https://vercel.com
 ```
 
 Output:
@@ -159,19 +164,19 @@ Output:
 
 ### Check exit code:
 ```bash
-npm start https://vercel.com 2>/dev/null
+node dist/find-rss-feeds.js https://vercel.com 2>/dev/null
 echo $?  # Outputs: 0
 ```
 
 ### No feeds found:
 ```bash
-npm start https://example.com 2>/dev/null
+node dist/find-rss-feeds.js https://example.com 2>/dev/null
 echo $?  # Outputs: 1
 ```
 
 ### Parallel scan:
 ```bash
-npm start https://vercel.com https://news.ycombinator.com | jq
+node dist/find-rss-feeds.js https://vercel.com https://news.ycombinator.com | jq
 ```
 
 ## Integration Example
@@ -211,7 +216,7 @@ This tool is designed to work seamlessly with AI coding agents:
 ### Opencode / Claude Code
 ```bash
 # Opencode can call this tool directly
-npx rss-agent-discovery https://example.com | jq '.results[0].feeds[].url'
+npx -y rss-agent-discovery https://example.com | jq '.results[0].feeds[].url'
 ```
 
 ### Cursor
@@ -219,7 +224,7 @@ Cursor can integrate this as a custom tool:
 ```json
 {
   "name": "rss_discovery",
-  "command": "npx rss-agent-discovery {url}",
+  "command": "npx -y rss-agent-discovery {url}",
   "description": "Discover RSS feeds from a website"
 }
 ```
@@ -229,7 +234,7 @@ Cursor can integrate this as a custom tool:
 // Use in GitHub Actions or workflows
 const { execSync } = require('child_process');
 const result = JSON.parse(
-  execSync('npx rss-agent-discovery https://github.com/blog').toString()
+  execSync('npx -y rss-agent-discovery https://github.com/blog').toString()
 );
 ```
 
@@ -239,7 +244,7 @@ const result = JSON.parse(
 import { spawn } from 'child_process';
 
 async function discoverRSS(url: string) {
-  const proc = spawn('npx', ['rss-agent-discovery', url]);
+  const proc = spawn('npx', ['-y', 'rss-agent-discovery', url]);
   const chunks: Buffer[] = [];
   
   for await (const chunk of proc.stdout) {
@@ -252,7 +257,7 @@ async function discoverRSS(url: string) {
 
 ### Why AI Agents Need This Tool
 
-AI agents (Claude, Cursor, GPT-4) struggle with RSS discovery because:
+AI agents (Claude, Cursor, ChatGPT Codex) struggle with RSS discovery because:
 - They rely on web search which may miss feeds
 - They don't systematically parse HTML `<link>` tags
 - They give up after trying 2-3 common paths
