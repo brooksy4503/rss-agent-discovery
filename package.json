@@ -1,6 +1,6 @@
 {
   "name": "rss-agent-discovery",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI agent-focused RSS feed discovery. JSON output, semantic exit codes.",
   "main": "dist/find-rss-feeds.js",
   "type": "module",
@@ -32,6 +32,14 @@
     "json"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brooksy4503/rss-agent-discovery.git"
+  },
+  "bugs": {
+    "url": "https://github.com/brooksy4503/rss-agent-discovery/issues"
+  },
+  "homepage": "https://github.com/brooksy4503/rss-agent-discovery#readme",
   "engines": {
     "node": ">=18"
   },
