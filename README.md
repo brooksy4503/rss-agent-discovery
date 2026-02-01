@@ -1,6 +1,6 @@
 # RSS Agent Discovery
 
-AI agent-focused RSS feed discovery tool. JSON-only output to stdout, errors to stderr.
+AI agent-focused RSS feed discovery tool. JSON-only output to stdout, errors to stderr only when `--verbose` is enabled.
 
 ## Why This Tool?
 
@@ -8,7 +8,8 @@ Existing RSS discovery tools (`rss-url-finder`, `rss-finder`) were built for hum
 
 This tool is designed for **AI agents** (Claude, Cursor, GPT):
 - JSON-only output to stdout (machine-parseable)
-- Errors to stderr (separated channel)
+- Errors to stderr only when `--verbose` is enabled (clean output by default)
+- All errors and warnings included in JSON structure
 - Semantic exit codes (0=found, 1=none, 2=error)
 - Fast (10s default timeout, parallel scanning)
 - Discovery-only (returns feed URLs, doesn't parse content)
@@ -119,7 +120,8 @@ npm run test:smoke    # Run smoke tests (integration)
           "type": "atom"
         }
       ],
-      "error": null
+      "error": null,
+      "diagnostics": []
     }
   ]
 }
@@ -131,7 +133,28 @@ npm run test:smoke    # Run smoke tests (integration)
 - `results` (array): One entry per input URL
   - `url` (string): The scanned URL
   - `feeds` (array): Discovered feed objects with `url`, `title`, and `type` ('rss' | 'atom' | 'unknown')
-  - `error` (string | null): Error message if scanning failed, `null` otherwise
+  - `error` (string | null): Error message if scanning failed, `null` otherwise. Timeout errors are normalized to `"Timeout"`
+  - `diagnostics` (string[], optional): Array of warning messages for non-fatal issues (e.g., failed blog path scans)
+
+## Output Contract
+
+**Default behavior (without `--verbose`):**
+- JSON-only output to stdout (machine-parseable)
+- No stderr output (clean for programmatic consumption)
+- All errors and warnings included in JSON structure
+
+**Verbose mode (`--verbose`):**
+- JSON output to stdout (unchanged)
+- Debug logging to stderr (useful for troubleshooting)
+- Additional context about skipped URLs, validation failures, etc.
+
+**Recommended integration pattern:**
+1. Parse stdout as JSON (always valid JSON, even on errors)
+2. Check `success` field for overall status
+3. Check `partialResults` if `success === false` to see if any feeds were found
+4. Check `error` field in each result for URL-specific failures
+5. Check `diagnostics` array for warnings and non-fatal issues
+6. Use `--verbose` flag only when troubleshooting or debugging
 
 ## Exit Codes
 
@@ -148,7 +171,8 @@ npm run test:smoke    # Run smoke tests (integration)
 - Deduplicates feeds across all sources
 - Validates feeds actually exist and return XML
 - JSON-only output to stdout
-- Errors to stderr
+- Errors to stderr only when `--verbose` is enabled
+- All errors and warnings included in JSON structure
 - 10s default timeout per URL (configurable)
 
 ## Examples
@@ -176,13 +200,13 @@ Output:
 
 ### Check exit code:
 ```bash
-node dist/find-rss-feeds.js https://vercel.com 2>/dev/null
+node dist/find-rss-feeds.js https://vercel.com
 echo $?  # Outputs: 0
 ```
 
 ### No feeds found:
 ```bash
-node dist/find-rss-feeds.js https://example.com 2>/dev/null
+node dist/find-rss-feeds.js https://example.com
 echo $?  # Outputs: 1
 ```
 
@@ -212,7 +236,8 @@ exit_code = result.returncode
 ### Shell script:
 ```bash
 #!/bin/bash
-result=$(node dist/find-rss-feeds.js "$1" 2>/dev/null)
+# No need to redirect stderr - it's clean by default
+result=$(node dist/find-rss-feeds.js "$1")
 exit_code=$?
 
 if [ $exit_code -eq 0 ]; then

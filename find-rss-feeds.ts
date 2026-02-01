@@ -41,6 +41,7 @@ interface DiscoveredResult {
   url: string;
   feeds: FeedResult[];
   error: string | null;
+  diagnostics?: string[];
 }
 
 export const cliOptions: CLIOptions = {
@@ -79,6 +80,27 @@ export const COMMON_BLOG_PATHS = [
   '/dev',
   '/community'
 ];
+
+// Verbose logger: only writes to stderr when --verbose is enabled
+function verboseLog(message: string, ...args: unknown[]): void {
+  if (cliOptions.verbose) {
+    console.error(message, ...args);
+  }
+}
+
+// Normalize timeout/abort errors to consistent messages
+function normalizeError(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return 'Timeout';
+  }
+  if (error instanceof Error) {
+    if (error.message === 'Timeout' || error.message.includes('timeout')) {
+      return 'Timeout';
+    }
+    return error.message;
+  }
+  return String(error);
+}
 
 export function parseArgs(args: string[]): string[] {
   const urls: string[] = [];
@@ -157,16 +179,24 @@ Examples:
 Output schema:
   {
     "success": true,
+    "partialResults": false,
     "results": [
       {
         "url": "https://example.com",
         "feeds": [
           {"url": "https://example.com/atom", "title": "Blog", "type": "atom"}
         ],
-        "error": null
+        "error": null,
+        "diagnostics": ["Optional array of warning messages"]
       }
     ]
   }
+
+Output contract:
+  - JSON-only output to stdout (machine-parseable)
+  - Errors to stderr only when --verbose is enabled
+  - All errors and warnings are included in JSON structure
+  - Use --verbose for debug logging during troubleshooting
   `);
 }
 
@@ -270,9 +300,7 @@ async function scanURLForFeeds(url: string, signal?: AbortSignal): Promise<ScanR
               discoveredFeeds.set(fullHref, { url: fullHref, title, type: feedType });
             }
           } catch (e) {
-            if (cliOptions.verbose) {
-              console.error(`Skipping invalid feed href: ${href}`, (e as Error).message);
-            }
+            verboseLog(`Skipping invalid feed href: ${href}`, (e as Error).message);
           }
         }
       }
@@ -295,9 +323,7 @@ async function scanURLForFeeds(url: string, signal?: AbortSignal): Promise<ScanR
           });
         }
       } catch (e) {
-        if (cliOptions.verbose) {
-          console.error(`Skipping invalid candidate URL: ${path}`, (e as Error).message);
-        }
+        verboseLog(`Skipping invalid candidate URL: ${path}`, (e as Error).message);
       }
     }
 
@@ -322,15 +348,14 @@ async function scanURLForFeeds(url: string, signal?: AbortSignal): Promise<ScanR
           }
         }
       } catch (e) {
-        if (cliOptions.verbose) {
-          console.error(`Failed to validate feed ${feedUrl}:`, (e as Error).message);
-        }
+        verboseLog(`Failed to validate feed ${feedUrl}:`, (e as Error).message);
       }
     }
 
     return { html, feeds: validFeeds };
   } catch (e) {
-    console.error(`Error scanning ${url}: ${(e as Error).message}`);
+    // Error is already captured in the result's error field, only log to stderr if verbose
+    verboseLog(`Error scanning ${url}:`, normalizeError(e));
     return { html: null, feeds: [] };
   }
 }
@@ -338,6 +363,7 @@ async function scanURLForFeeds(url: string, signal?: AbortSignal): Promise<ScanR
 async function findRSSFeeds(baseUrl: string): Promise<DiscoveredResult> {
   const timeoutMs = cliOptions.timeout;
   const signal = AbortSignal.timeout(timeoutMs);
+  const diagnostics: string[] = [];
 
   try {
     const scanResult = await scanURLForFeeds(baseUrl, signal);
@@ -366,36 +392,44 @@ async function findRSSFeeds(baseUrl: string): Promise<DiscoveredResult> {
           blogURLs.map(blogUrl => scanURLForFeeds(blogUrl, signal))
         );
 
-        blogResults.forEach((result) => {
+        blogResults.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             result.value.feeds.forEach((feed: FeedResult) => {
               if (!allFeeds.has(feed.url)) {
                 allFeeds.set(feed.url, feed);
               }
             });
+          } else {
+            // Collect diagnostics for failed blog scans
+            const blogUrl = blogURLs[index];
+            const errorMsg = normalizeError(result.reason);
+            diagnostics.push(`Failed to scan blog path ${blogUrl}: ${errorMsg}`);
+            verboseLog(`Failed to scan blog path ${blogUrl}:`, errorMsg);
           }
         });
       }
     }
 
-    return {
+    const result: DiscoveredResult = {
       url: baseUrl,
       feeds: Array.from(allFeeds.values()),
       error: null
     };
-  } catch (e) {
-    let errorMessage = (e as Error).message;
-    // Handle abort/timeout errors
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      errorMessage = 'Timeout';
-    } else if (errorMessage === 'Timeout') {
-      errorMessage = 'Timeout';
+
+    if (diagnostics.length > 0) {
+      result.diagnostics = diagnostics;
     }
-    console.error(`Error processing ${baseUrl}: ${errorMessage}`);
+
+    return result;
+  } catch (e) {
+    const errorMessage = normalizeError(e);
+    // Error is already captured in the result's error field, only log to stderr if verbose
+    verboseLog(`Error processing ${baseUrl}:`, errorMessage);
     return {
       url: baseUrl,
       feeds: [],
-      error: errorMessage
+      error: errorMessage,
+      diagnostics: diagnostics.length > 0 ? diagnostics : undefined
     };
   }
 }

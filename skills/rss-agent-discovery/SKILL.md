@@ -24,7 +24,8 @@ Output:
       "title": "atom",
       "type": "atom"
     }],
-    "error": null
+    "error": null,
+    "diagnostics": []
   }]
 }
 ```
@@ -53,10 +54,31 @@ npx -y rss-agent-discovery https://example.com | jq '.results[0].feeds'
       title: string,          // feed title from HTML
       type: 'rss' | 'atom' | 'unknown'
     }],
-    error: string | null      // error message if scan failed
+    error: string | null,     // error message if scan failed (timeout errors normalized to "Timeout")
+    diagnostics?: string[]    // optional array of warning messages for non-fatal issues
   }]
 }
 ```
+
+## Output contract
+
+**Default behavior (without `--verbose`):**
+- JSON-only output to stdout (machine-parseable)
+- No stderr output (clean for programmatic consumption)
+- All errors and warnings included in JSON structure
+
+**Verbose mode (`--verbose`):**
+- JSON output to stdout (unchanged)
+- Debug logging to stderr (useful for troubleshooting)
+- Additional context about skipped URLs, validation failures, etc.
+
+**Recommended integration pattern:**
+1. Parse stdout as JSON (always valid JSON, even on errors)
+2. Check `success` field for overall status
+3. Check `partialResults` if `success === false` to see if any feeds were found
+4. Check `error` field in each result for URL-specific failures
+5. Check `diagnostics` array for warnings and non-fatal issues
+6. Use `--verbose` flag only when troubleshooting or debugging
 
 ## Exit codes
 
@@ -66,7 +88,7 @@ npx -y rss-agent-discovery https://example.com | jq '.results[0].feeds'
 
 Use exit code for automation:
 ```bash
-npx -y rss-agent-discovery https://example.com 2>/dev/null
+npx -y rss-agent-discovery https://example.com
 if [ $? -eq 0 ]; then
   echo "Feeds found!"
 fi
@@ -79,7 +101,7 @@ fi
 --skip-blogs           # Skip blog subdirectory scanning
 --max-blogs <n>        # Limit blog scans (default: 3)
 --blog-paths <paths>   # Custom blog paths (comma or pipe separated)
---verbose              # Debug logging to stderr
+--verbose              # Enable debug logging to stderr (default: JSON-only output)
 --help                 # Show help
 --version              # Show version
 ```
@@ -101,7 +123,9 @@ npx -y rss-agent-discovery --max-blogs 5 https://example.com
 - Parallel processing for multiple URLs
 - Deduplicates feeds across all sources
 - Validates feeds actually return XML
-- JSON output to stdout, errors to stderr
+- JSON-only output to stdout (clean by default, no stderr)
+- Errors and warnings included in JSON structure
+- Timeout errors normalized to consistent "Timeout" message
 
 ## Common patterns
 
@@ -122,7 +146,7 @@ npx -y rss-agent-discovery https://example.com | jq -r '.results[0].feeds[].url'
 
 ### Check if feeds exist without parsing
 ```bash
-npx -y rss-agent-discovery https://example.com 2>/dev/null
+npx -y rss-agent-discovery https://example.com
 exit_code=$?
 [ $exit_code -eq 0 ] && echo "Feeds found"
 ```
@@ -142,7 +166,8 @@ npx -y rss-agent-discovery --skip-blogs https://example.com
 ### Shell script
 ```bash
 #!/bin/bash
-result=$(npx -y rss-agent-discovery "$1" 2>/dev/null)
+# No need to redirect stderr - it's clean by default
+result=$(npx -y rss-agent-discovery "$1")
 if [ $? -eq 0 ]; then
   echo "Found feeds:"
   echo "$result" | jq '.results[0].feeds'
@@ -182,10 +207,12 @@ Existing RSS discovery tools (`rss-url-finder`, `rss-finder`) are designed for h
 - Lack structured machine output
 
 This tool is designed for AI agents:
-- JSON-only output (machine-parseable)
-- Errors to stderr (separated channel)
+- JSON-only output to stdout (machine-parseable)
+- Clean output by default (no stderr unless `--verbose` is enabled)
+- All errors and warnings included in JSON structure
 - Semantic exit codes
 - Validates feeds return XML
+- Timeout errors normalized to consistent format
 - Discovers feeds AI agents miss
 
 ## Testing

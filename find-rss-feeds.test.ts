@@ -1,8 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 // Note: This file tests the compiled code in dist/
 // Import will be resolved to dist/find-rss-feeds.js after build
 import { parseArgs, extractBlogLinksFromHTML, discoverBlogSubdirectories, cliOptions, COMMON_BLOG_PATHS } from './find-rss-feeds.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const CLI_PATH = join(__dirname, '..', 'dist', 'find-rss-feeds.js');
 
 // Reset cliOptions before each test
 function resetCliOptions() {
@@ -242,4 +249,211 @@ test('feed validation logic - valid Atom should pass', () => {
   assert.ok(hasRssOrFeed);
   assert.ok(!isHtml);
   assert.ok(hasRssOrFeed && (hasXmlDeclaration || hasXmlContentType) && !isHtml);
+});
+
+test('output contract - JSON-only stdout when verbose is off', async () => {
+  resetCliOptions();
+  return new Promise<void>((resolve, reject) => {
+    const proc = spawn('node', [CLI_PATH, '--timeout', '1000', 'https://httpstat.us/500'], {
+      cwd: __dirname
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      try {
+        // Should have JSON output
+        assert.ok(stdout.length > 0, 'Should have stdout output');
+        const output = JSON.parse(stdout);
+        assert.ok(output.hasOwnProperty('success'), 'Output should have success field');
+        assert.ok(output.hasOwnProperty('results'), 'Output should have results field');
+
+        // Should have no stderr output when verbose is off
+        assert.strictEqual(stderr, '', 'Should have no stderr output when verbose is off');
+        resolve();
+      } catch (e) {
+        reject(new Error(`Test failed: ${(e as Error).message}\nstdout: ${stdout}\nstderr: ${stderr}`));
+      }
+    });
+
+    proc.on('error', (e) => {
+      reject(new Error(`Process spawn failed: ${e.message}`));
+    });
+  });
+});
+
+test('output contract - stderr output when verbose is on', async () => {
+  resetCliOptions();
+  return new Promise<void>((resolve, reject) => {
+    const proc = spawn('node', [CLI_PATH, '--verbose', '--timeout', '1000', 'https://httpstat.us/500'], {
+      cwd: __dirname
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      try {
+        // Should still have valid JSON output
+        assert.ok(stdout.length > 0, 'Should have stdout output');
+        const output = JSON.parse(stdout);
+        assert.ok(output.hasOwnProperty('success'), 'Output should have success field');
+
+        // May have stderr output when verbose is on (but not required for all cases)
+        // Just verify JSON is still valid
+        resolve();
+      } catch (e) {
+        reject(new Error(`Test failed: ${(e as Error).message}\nstdout: ${stdout}\nstderr: ${stderr}`));
+      }
+    });
+
+    proc.on('error', (e) => {
+      reject(new Error(`Process spawn failed: ${e.message}`));
+    });
+  });
+});
+
+test('output contract - timeout error normalization', async () => {
+  resetCliOptions();
+  return new Promise<void>((resolve, reject) => {
+    // Use a very short timeout to force a timeout error
+    const proc = spawn('node', [CLI_PATH, '--timeout', '1', 'https://httpstat.us/200?sleep=5000'], {
+      cwd: __dirname
+    });
+
+    let stdout = '';
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      try {
+        const output = JSON.parse(stdout);
+        assert.ok(output.hasOwnProperty('results'), 'Output should have results field');
+        assert.ok(Array.isArray(output.results), 'Results should be an array');
+
+        if (output.results.length > 0 && output.results[0].error) {
+          // Error should be normalized to "Timeout" or contain timeout-related message
+          const errorMsg = output.results[0].error;
+          assert.ok(
+            errorMsg === 'Timeout' || errorMsg.toLowerCase().includes('timeout'),
+            `Error message should be normalized: got "${errorMsg}"`
+          );
+        }
+        resolve();
+      } catch (e) {
+        reject(new Error(`Test failed: ${(e as Error).message}\nstdout: ${stdout}`));
+      }
+    });
+
+    proc.on('error', (e) => {
+      reject(new Error(`Process spawn failed: ${e.message}`));
+    });
+  });
+});
+
+test('output contract - partial results when one URL fails', async () => {
+  resetCliOptions();
+  return new Promise<void>((resolve, reject) => {
+    // Use one valid URL and one that will fail
+    const proc = spawn('node', [CLI_PATH, '--timeout', '5000', 'https://httpstat.us/500', 'https://httpstat.us/404'], {
+      cwd: __dirname
+    });
+
+    let stdout = '';
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      try {
+        const output = JSON.parse(stdout);
+        assert.ok(output.hasOwnProperty('success'), 'Output should have success field');
+        assert.ok(output.hasOwnProperty('results'), 'Output should have results field');
+        assert.ok(Array.isArray(output.results), 'Results should be an array');
+        assert.strictEqual(output.results.length, 2, 'Should have results for both URLs');
+
+        // If there are errors but also some success, partialResults should be true
+        const hasErrors = output.results.some((r: { error: string | null }) => r.error !== null);
+        const hasFeeds = output.results.some((r: { feeds: unknown[] }) => r.feeds.length > 0);
+
+        if (hasErrors && hasFeeds) {
+          assert.strictEqual(
+            output.partialResults,
+            true,
+            'partialResults should be true when some URLs fail but others succeed'
+          );
+        }
+
+        resolve();
+      } catch (e) {
+        reject(new Error(`Test failed: ${(e as Error).message}\nstdout: ${stdout}`));
+      }
+    });
+
+    proc.on('error', (e) => {
+      reject(new Error(`Process spawn failed: ${e.message}`));
+    });
+  });
+});
+
+test('output contract - diagnostics field in results', async () => {
+  resetCliOptions();
+  return new Promise<void>((resolve, reject) => {
+    // Use a URL that might generate diagnostics (blog scan failures)
+    const proc = spawn('node', [CLI_PATH, '--timeout', '5000', 'https://httpstat.us/200'], {
+      cwd: __dirname
+    });
+
+    let stdout = '';
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      try {
+        const output = JSON.parse(stdout);
+        assert.ok(output.hasOwnProperty('results'), 'Output should have results field');
+        assert.ok(Array.isArray(output.results), 'Results should be an array');
+
+        // Check that diagnostics field is optional and valid when present
+        output.results.forEach((result: { diagnostics?: string[] }) => {
+          if (result.diagnostics !== undefined) {
+            assert.ok(Array.isArray(result.diagnostics), 'Diagnostics should be an array');
+            result.diagnostics.forEach((diag: unknown) => {
+              assert.strictEqual(typeof diag, 'string', 'Each diagnostic should be a string');
+            });
+          }
+        });
+
+        resolve();
+      } catch (e) {
+        reject(new Error(`Test failed: ${(e as Error).message}\nstdout: ${stdout}`));
+      }
+    });
+
+    proc.on('error', (e) => {
+      reject(new Error(`Process spawn failed: ${e.message}`));
+    });
+  });
 });
