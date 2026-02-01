@@ -360,7 +360,7 @@ async function scanURLForFeeds(url: string, signal?: AbortSignal): Promise<ScanR
   }
 }
 
-async function findRSSFeeds(baseUrl: string): Promise<DiscoveredResult> {
+export async function findRSSFeeds(baseUrl: string): Promise<DiscoveredResult> {
   const timeoutMs = cliOptions.timeout;
   const signal = AbortSignal.timeout(timeoutMs);
   const diagnostics: string[] = [];
