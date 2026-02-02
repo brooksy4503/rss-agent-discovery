@@ -26,12 +26,10 @@ npm run build
 
 ### Agent Skills
 
-Install the `skills/rss-agent-discovery` skill with the Skills CLI:
+Install AI agent skill with Skills CLI:
 
 ```bash
-npx skills add <owner/repo>
-# example:
-npx skills add brooksy4503/rss-agent-discovery
+npx skills add brooksy4503/rss-agent-discovery --skill rss-agent-discovery
 ```
 
 More info about the Skills CLI: https://skills.sh/
